@@ -60,7 +60,7 @@ int main(int argc __UNUSED__, char** argv __UNUSED__)
 	/* { dg-output "1.0 2.0\n" } */
 
 	closure_test_fn(arg);
-	/* { dg-output "1.0 2.0\n" } */
+	/* { dg-output "1.0 2.0" } */
 
 	return 0;
 }
