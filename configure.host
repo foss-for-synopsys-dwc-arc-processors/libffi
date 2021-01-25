@@ -25,6 +25,12 @@ case "${host}" in
 	SOURCES="ffi.c osf.S"
 	;;
 
+  arc64*-*-*)
+	TARGET=ARC64; TARGETDIR=arc64
+	SOURCES="ffi.c arc64.S"
+	HAVE_LONG_DOUBLE=1
+	;;
+
   arc*-*-*)
 	TARGET=ARC; TARGETDIR=arc
 	SOURCES="ffi.c arcompact.S"

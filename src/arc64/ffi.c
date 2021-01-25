@@ -1,7 +1,7 @@
 /* -----------------------------------------------------------------------
-   ffi.c - Copyright (c) 2013  Synopsys, Inc. (www.synopsys.com)
-   
-   ARC Foreign Function Interface 
+   ffi.c - Copyright (c) 2013-2021  Synopsys, Inc. (www.synopsys.com)
+
+   ARC64 Foreign Function Interface
 
    Permission is hereby granted, free of charge, to any person obtaining
    a copy of this software and associated documentation files (the
@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-//#include <sys/cachectl.h>
+#include <sys/cachectl.h>
 
 /* for little endian ARC, the code is in fact stored as mixed endian for
    performance reasons */
@@ -39,23 +39,49 @@
 #define CODE_ENDIAN(x) ( (((uint32_t) (x)) << 16) | (((uint32_t) (x)) >> 16))
 #endif
 
+/* TODO: I believe this will be changed soon...  */
+static int
+ffi_arg_use_stack_ptr (const ffi_type *arg)
+{
+  if (arg->type == FFI_TYPE_FLOAT
+      || arg->type == FFI_TYPE_DOUBLE
+      || arg->type == FFI_TYPE_LONGDOUBLE)
+    return 1;
+
+  if (arg->type == FFI_TYPE_STRUCT)
+    {
+      ffi_type ** const p_el = arg->elements;
+
+      if (arg->size > 16)
+	return 1;
+
+      if (p_el && p_el[0] && p_el[1] == NULL
+	  && ffi_arg_use_stack_ptr (p_el[0]))
+	return 1;
+    }
+
+  return 0;
+}
+
 /* ffi_prep_args is called by the assembly routine once stack
    space has been allocated for the function's arguments.  */
 
 void
-ffi_prep_args (char *stack, extended_cif * ecif)
+ffi_prep_args (char *stack, extended_cif * ecif, unsigned stack_allocated)
 {
   unsigned int i;
   void **p_argv;
   char *argp;
+  char *stack_end;
   ffi_type **p_arg;
 
+  stack_end = stack + stack_allocated;
   argp = stack;
 
   if (ecif->cif->rtype->type == FFI_TYPE_STRUCT)
     {
       *(void **) argp = ecif->rvalue;
-      argp += 4;
+      argp += 8;
     }
 
   p_argv = ecif->avalue;
@@ -66,15 +92,27 @@ ffi_prep_args (char *stack, extended_cif * ecif)
       size_t z;
       int alignment;
 
-      /* align alignment to 4 */
-      alignment = (((*p_arg)->alignment - 1) | 3) + 1;
+      /* align alignment to 8 */
+      alignment = (((*p_arg)->alignment - 1) | 7) + 1;
 
       /* Align if necessary.  */
-      if ((alignment - 1) & (unsigned) argp)
+      if ((alignment - 1) & (unsigned long) argp)
 	argp = (char *) FFI_ALIGN (argp, alignment);
 
       z = (*p_arg)->size;
-      if (z < sizeof (int))
+      if (ffi_arg_use_stack_ptr (*p_arg))
+	{
+	  void *ptr;
+
+	  ptr = stack_end - z;
+	  ptr = (void *) FFI_ALIGN_DOWN (ptr, 8);
+	  memcpy (ptr, *p_argv, z);
+	  stack_end = ptr;
+
+	  *(void **) argp = ptr;
+	  z = 8;
+	}
+      else if (z < sizeof (int))
 	{
 	  z = sizeof (int);
 
@@ -110,15 +148,7 @@ ffi_prep_args (char *stack, extended_cif * ecif)
 	}
       else
 	{
-	  if ((*p_arg)->type == FFI_TYPE_STRUCT)
-	    {
-	      memcpy (argp, *p_argv, z);
-	    }
-	  else
-	    {
-	      /* Double or long long 64bit.  */
-	      memcpy (argp, *p_argv, z);
-	    }
+	  memcpy (argp, *p_argv, z);
 	}
       p_argv++;
       argp += z;
@@ -145,6 +175,7 @@ ffi_prep_cif_machdep (ffi_cif * cif)
     case FFI_TYPE_SINT64:
     case FFI_TYPE_UINT64:
     case FFI_TYPE_DOUBLE:
+    case FFI_TYPE_LONGDOUBLE:
       cif->flags = FFI_TYPE_DOUBLE;
       break;
 
@@ -157,14 +188,17 @@ ffi_prep_cif_machdep (ffi_cif * cif)
   return FFI_OK;
 }
 
-extern void ffi_call_ARCompact (void (*)(char *, extended_cif *),
-				extended_cif *, unsigned, unsigned,
-				unsigned *, void (*fn) (void));
+extern void ffi_call_ARC64 (void (*)(char *, extended_cif *, unsigned),
+			    extended_cif *, unsigned, unsigned,
+			    unsigned *, void (*fn) (void), unsigned);
 
 void
 ffi_call (ffi_cif * cif, void (*fn) (void), void *rvalue, void **avalue)
 {
   extended_cif ecif;
+  ffi_type **p_arg;
+  unsigned i;
+  unsigned stack_args_bytes = 0;
 
   ecif.cif = cif;
   ecif.avalue = avalue;
@@ -178,11 +212,21 @@ ffi_call (ffi_cif * cif, void (*fn) (void), void *rvalue, void **avalue)
   else
     ecif.rvalue = rvalue;
 
+  for (i = cif->nargs, p_arg = cif->arg_types;
+       (i != 0); i--, p_arg++)
+    {
+      if (ffi_arg_use_stack_ptr (*p_arg))
+	{
+	      stack_args_bytes += (*p_arg)->size;
+	      stack_args_bytes = FFI_ALIGN (stack_args_bytes, 8);
+	}
+    }
+
   switch (cif->abi)
     {
-    case FFI_ARCOMPACT:
-      ffi_call_ARCompact (ffi_prep_args, &ecif, cif->bytes,
-			  cif->flags, ecif.rvalue, fn);
+    case FFI_ARC64:
+      ffi_call_ARC64 (ffi_prep_args, &ecif, cif->bytes,
+		      cif->flags, ecif.rvalue, fn, stack_args_bytes);
       break;
 
     default:
@@ -192,7 +236,7 @@ ffi_call (ffi_cif * cif, void (*fn) (void), void *rvalue, void **avalue)
 }
 
 int
-ffi_closure_inner_ARCompact (ffi_closure * closure, void *rvalue,
+ffi_closure_inner_ARC64 (ffi_closure * closure, void *rvalue,
 			     ffi_arg * args)
 {
   void **arg_area, **p_argv;
@@ -207,7 +251,7 @@ ffi_closure_inner_ARCompact (ffi_closure * closure, void *rvalue,
   if (cif->flags == FFI_TYPE_STRUCT)
     {
       rvalue = *(void **) argp;
-      argp += 4;
+      argp += 8;
     }
 
   p_argv = arg_area;
@@ -218,15 +262,23 @@ ffi_closure_inner_ARCompact (ffi_closure * closure, void *rvalue,
       size_t z;
       int alignment;
 
-      /* align alignment to 4 */
-      alignment = (((*p_argt)->alignment - 1) | 3) + 1;
+      /* Align alignment to 8.  */
+      alignment = (((*p_argt)->alignment - 1) | 7) + 1;
 
       /* Align if necessary.  */
-      if ((alignment - 1) & (unsigned) argp)
+      if ((alignment - 1) & (unsigned long) argp)
 	argp = (char *) FFI_ALIGN (argp, alignment);
 
-      z = (*p_argt)->size;
-      *p_argv = (void *) argp;
+      if (ffi_arg_use_stack_ptr (*p_argt))
+	{
+	  z = 8;
+	  *p_argv = *(void **) argp;
+	}
+      else
+	{
+	  z = (*p_argt)->size;
+	  *p_argv = (void *) argp;
+	}
       argp += z;
     }
 
@@ -235,7 +287,7 @@ ffi_closure_inner_ARCompact (ffi_closure * closure, void *rvalue,
   return cif->flags;
 }
 
-extern void ffi_closure_ARCompact (void);
+extern void ffi_closure_ARC64 (void);
 
 ffi_status
 ffi_prep_closure_loc (ffi_closure * closure, ffi_cif * cif,
@@ -246,11 +298,14 @@ ffi_prep_closure_loc (ffi_closure * closure, ffi_cif * cif,
 
   switch (cif->abi)
     {
-    case FFI_ARCOMPACT:
+    case FFI_ARC64:
       FFI_ASSERT (tramp == codeloc);
-      tramp[0] = CODE_ENDIAN (0x200a1fc0);	/* mov r8, pcl  */
-      tramp[1] = CODE_ENDIAN (0x20200f80);	/* j [long imm] */
-      tramp[2] = CODE_ENDIAN (ffi_closure_ARCompact);
+      tramp[0] = CODE_ENDIAN (0x580a1fc0);	/* movl r8, pcl  */
+      tramp[1] = CODE_ENDIAN (0x5c0b1f80);	/* movhl r12, limm */
+      tramp[2] = CODE_ENDIAN ((uint64_t)(ffi_closure_ARC64) >> 32);
+      tramp[3] = CODE_ENDIAN (0x5c051f0c);	/* orl r12, r12, limm */
+      tramp[4] = CODE_ENDIAN ((uint64_t)(ffi_closure_ARC64) & 0xffffffff);
+      tramp[5] = CODE_ENDIAN (0x20200300);	/* j [r12] */
       break;
 
     default:
@@ -260,7 +315,7 @@ ffi_prep_closure_loc (ffi_closure * closure, ffi_cif * cif,
   closure->cif = cif;
   closure->fun = fun;
   closure->user_data = user_data;
- // cacheflush (codeloc, FFI_TRAMPOLINE_SIZE, BCACHE);
+  cacheflush (codeloc, FFI_TRAMPOLINE_SIZE, BCACHE);
 
   return FFI_OK;
 }

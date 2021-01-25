@@ -46,8 +46,8 @@ endif
 
 noinst_HEADERS = src/aarch64/ffitarget.h src/aarch64/internal.h		\
 	src/alpha/ffitarget.h src/alpha/internal.h			\
-	src/arc/ffitarget.h src/arm/ffitarget.h src/arm/internal.h	\
-	src/avr32/ffitarget.h src/bfin/ffitarget.h			\
+	src/arc/ffitarget.h src/arc64/ffitarget.h src/arm/ffitarget.h	\
+	src/arm/internal.h src/avr32/ffitarget.h src/bfin/ffitarget.h	\
 	src/cris/ffitarget.h src/csky/ffitarget.h src/frv/ffitarget.h	\
 	src/ia64/ffitarget.h src/ia64/ia64_flags.h			\
 	src/m32r/ffitarget.h src/m68k/ffitarget.h			\
@@ -66,13 +66,13 @@ noinst_HEADERS = src/aarch64/ffitarget.h src/aarch64/internal.h		\
 
 EXTRA_libffi_la_SOURCES = src/aarch64/ffi.c src/aarch64/sysv.S		\
 	src/aarch64/win64_armasm.S src/alpha/ffi.c src/alpha/osf.S	\
-	src/arc/ffi.c src/arc/arcompact.S src/arm/ffi.c			\
-	src/arm/sysv.S src/arm/ffi.c src/arm/sysv_msvc_arm32.S		\
-	src/avr32/ffi.c src/avr32/sysv.S src/bfin/ffi.c			\
-	src/bfin/sysv.S src/cris/ffi.c src/cris/sysv.S src/frv/ffi.c	\
-	src/csky/ffi.c src/csky/sysv.S src/frv/eabi.S src/ia64/ffi.c	\
-	src/ia64/unix.S src/m32r/ffi.c src/m32r/sysv.S src/m68k/ffi.c	\
-	src/m68k/sysv.S src/m88k/ffi.c src/m88k/obsd.S			\
+	src/arc/ffi.c src/arc/arcompact.S src/arc64/ffi.c		\
+	src/arc64/arc64.S src/arm/ffi.c src/arm/sysv.S src/arm/ffi.c	\
+	src/arm/sysv_msvc_arm32.S src/avr32/ffi.c src/avr32/sysv.S	\
+	src/bfin/ffi.c src/bfin/sysv.S src/cris/ffi.c src/cris/sysv.S	\
+	src/frv/ffi.c src/csky/ffi.c src/csky/sysv.S src/frv/eabi.S	\
+	src/ia64/ffi.c src/ia64/unix.S src/m32r/ffi.c src/m32r/sysv.S	\
+	src/m68k/ffi.c src/m68k/sysv.S src/m88k/ffi.c src/m88k/obsd.S	\
 	src/metag/ffi.c src/metag/sysv.S src/microblaze/ffi.c		\
 	src/microblaze/sysv.S src/mips/ffi.c src/mips/o32.S		\
 	src/mips/n32.S src/moxie/ffi.c src/moxie/eabi.S			\
