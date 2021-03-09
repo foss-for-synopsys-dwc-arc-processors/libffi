@@ -43,11 +43,6 @@
 static int
 ffi_arg_use_stack_ptr (const ffi_type *arg)
 {
-  if (arg->type == FFI_TYPE_FLOAT
-      || arg->type == FFI_TYPE_DOUBLE
-      || arg->type == FFI_TYPE_LONGDOUBLE)
-    return 1;
-
   if (arg->type == FFI_TYPE_STRUCT)
     {
       ffi_type ** const p_el = arg->elements;
